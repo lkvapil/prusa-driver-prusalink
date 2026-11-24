@@ -9,12 +9,10 @@
 # carries this module because this file names it, and a binary built from a
 # configuration that does not name it has never heard of `prusalink`.
 #
-# The paths here are absolute because the scaffold does not know where you will
-# move this directory to. A module that lives beside the checkout writes them
-# relative to this file's own directory instead, which is how the worked
-# examples under examples/adapters/ are written.
+# The paths are read against this file's own directory, so this expects the
+# prusa-connect checkout beside this directory.
 core:
-  path: /Users/lukaskvapil/Documents/prusa-connect
+  path: ../prusa-connect
 
 # `path` is the path mode, which is for development and on-premise builds and
 # pins nothing. A released adapter is named by version instead, and that is the
@@ -31,6 +29,6 @@ adapters:
 # out of the resolved core, exactly as make build runs them. It is the core's
 # own shipped file: a composed adapter takes no build tag, so there is nothing
 # here for this adapter to say.
-config: /Users/lukaskvapil/Documents/prusa-connect/config/config.yaml
+config: ../prusa-connect/config/config.yaml
 variant: full
-output: /Users/lukaskvapil/Documents/prusa-connect/bin/server-prusalink
+output: ../prusa-connect/bin/server-prusalink

@@ -1,15 +1,26 @@
 # prusalink
 
 A printer driver for [Prusa Connect](https://github.com/prusa3d/prusa-connect)
-for printers that run PrusaLink: the Original Prusa MK3S, MK3S+, MK3 and MK2.5S.
+for the Original Prusa MK3S and MK3S+ with a Raspberry Pi Zero 2 W running
+PrusaLink.
+
+| printer | how the Raspberry Pi connects | status |
+| --- | --- | --- |
+| MK3S, MK3S+ (Einsy RAMBo) | on the GPIO header, inside the printer | the main target, to be tested first |
+| MK3 (Einsy RAMBo) | on the GPIO header | should work, not tested |
+| MK2.5S (MiniRambo) | over USB, beside the printer | should work, not tested |
+
+The driver speaks only to PrusaLink over the network, and PrusaLink has the
+same API on all of these printers. How the Raspberry Pi reaches the printer is
+PrusaLink's part, so the driver is the same for each of them.
 
 **Status: tested only against a fake PrusaLink, not yet on a real printer.**
 The fake follows the published PrusaLink API, and the driver passes the sdk's
 conformance suite and a run in a real Prusa Connect server against that fake.
 A test on a real MK3S with a Raspberry Pi comes next.
 
-These printers have the RAMBo board. The board cannot speak to Prusa Connect, so
-a Raspberry Pi Zero 2 W on the printer's GPIO header runs
+These printers have a RAMBo board, which cannot speak to Prusa Connect. A
+Raspberry Pi Zero 2 W on the GPIO header of the Einsy RAMBo runs
 [PrusaLink](https://github.com/prusa3d/Prusa-Link), which drives the printer
 over its serial line and serves an HTTP API. This driver reads that API. The
 server then shows the MK3S beside an MK4S, at the same state paths.

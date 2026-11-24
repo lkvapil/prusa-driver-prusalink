@@ -33,6 +33,9 @@ const (
 	// progressStep is how many bytes go between two progress reports.
 	progressStep = 256 << 10
 
+	// gcodeType is the media type a print file is sent with.
+	gcodeType = "text/x.gcode"
+
 	// sfTrue is a true boolean in the form RFC 8941 gives a header, which is
 	// how PrusaLink reads its Force and Overwrite headers.
 	sfTrue = "?1"
@@ -263,8 +266,13 @@ func (s *Session) Send(ctx context.Context, up connectorapi.Upload) error {
 	}
 	defer func() { _ = body.Close() }()
 
+	// text/x.gcode and not application/octet-stream. PrusaLink 0.8.1 checks the
+	// type of an octet-stream upload with libmagic, which reads a G-code file
+	// as text/plain and refuses it, and it reads the file at its final name
+	// before the file is there (prusa/link/web/files.py, file_upload). An upload
+	// typed text/x.gcode is taken without that check. PrusaSlicer types it so.
 	headers := http.Header{}
-	headers.Set("Content-Type", "application/octet-stream")
+	headers.Set("Content-Type", gcodeType)
 
 	counted := &countingReader{r: body, step: progressStep, report: report}
 

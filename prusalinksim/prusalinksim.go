@@ -286,6 +286,21 @@ func (p *Printer) listFiles(w http.ResponseWriter, r *http.Request) {
 // upload stores the body, and refuses a name that is taken, as PrusaLink does
 // without the Overwrite header.
 func (p *Printer) upload(w http.ResponseWriter, r *http.Request) {
+	// PrusaLink 0.8.1 takes text/x.gcode without a check. An octet-stream
+	// upload goes through a libmagic check that refuses a G-code file, so the
+	// fake refuses every other type, and a driver that sends one finds out here.
+	if r.Header.Get("Content-Type") != "text/x.gcode" {
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+
+		return
+	}
+
+	if r.ContentLength <= 0 {
+		w.WriteHeader(http.StatusLengthRequired)
+
+		return
+	}
+
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)

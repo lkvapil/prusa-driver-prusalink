@@ -1,0 +1,36 @@
+# The build configuration that puts this adapter into a server binary.
+#
+# Run it from the core checkout:
+#
+#   make compose-build BUILD_FILE=../prusa-connect-prusalink/build.yaml
+#
+# That is the whole admission. There is no blank import in the core tree, no
+# adoption list entry, no build tag and no row in adapters/tags.json: the binary
+# carries this module because this file names it, and a binary built from a
+# configuration that does not name it has never heard of `prusalink`.
+#
+# The paths here are absolute because the scaffold does not know where you will
+# move this directory to. A module that lives beside the checkout writes them
+# relative to this file's own directory instead, which is how the worked
+# examples under examples/adapters/ are written.
+core:
+  path: /Users/lukaskvapil/Documents/prusa-connect
+
+# `path` is the path mode, which is for development and on-premise builds and
+# pins nothing. A released adapter is named by version instead, and that is the
+# mode where go.sum records what was pulled:
+#
+#   adapters:
+#     - module: github.com/lkvapil/prusa-driver-prusalink
+#       version: v0.1.0
+adapters:
+  - module: github.com/lkvapil/prusa-driver-prusalink
+    path: .
+
+# What make build reads as CONFIG_FILE. The tag and feature detectors read it,
+# out of the resolved core, exactly as make build runs them. It is the core's
+# own shipped file: a composed adapter takes no build tag, so there is nothing
+# here for this adapter to say.
+config: /Users/lukaskvapil/Documents/prusa-connect/config/config.yaml
+variant: full
+output: /Users/lukaskvapil/Documents/prusa-connect/bin/server-prusalink

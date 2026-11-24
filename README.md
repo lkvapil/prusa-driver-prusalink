@@ -1,7 +1,12 @@
 # prusalink
 
 A printer driver for [Prusa Connect](https://github.com/prusa3d/prusa-connect)
-that brings the Original Prusa MK3S, MK3S+, MK3 and MK2.5S into the server.
+for printers that run PrusaLink: the Original Prusa MK3S, MK3S+, MK3 and MK2.5S.
+
+**Status: tested only against a fake PrusaLink, not yet on a real printer.**
+The fake follows the published PrusaLink API, and the driver passes the sdk's
+conformance suite and a run in a real Prusa Connect server against that fake.
+A test on a real MK3S with a Raspberry Pi comes next.
 
 These printers have the RAMBo board. The board cannot speak to Prusa Connect, so
 a Raspberry Pi Zero 2 W on the printer's GPIO header runs

@@ -1,0 +1,13 @@
+# A server without the web app, for a quick check that a host takes this driver.
+#
+#   make compose-build BUILD_FILE=../prusa-connect-prusalink/build-minimal.yaml
+core:
+  path: ../prusa-connect
+
+adapters:
+  - module: github.com/lkvapil/prusa-driver-prusalink
+    path: .
+
+config: ../prusa-connect/config/config.yaml
+variant: minimal
+output: ../prusa-connect/bin/server-prusalink-minimal

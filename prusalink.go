@@ -87,15 +87,34 @@ const (
 //nolint:gochecknoinits // registration has to happen before main; the host reaches it through a blank import.
 func init() { connectorapi.Register(Type, Doc(), New, dialect()) }
 
-// models maps the type code PrusaLink reports in /api/version onto the model
-// this driver reports. The MK3S+ reports the code of the MK3S.
+// models maps what PrusaLink reports in /api/version onto the model this
+// driver reports: the type name in original, which PrusaLink 0.8.1 sends, and
+// the type code in printer, which the published API file names. The MK3S+
+// reports the type of the MK3S.
 //
 //nolint:gochecknoglobals // a lookup table, read-only after init.
 var models = map[string]string{
-	"1.3.0": "MK3",
-	"1.3.1": "MK3S",
-	"1.2.5": "MK2.5",
-	"1.2.6": "MK2.5S",
+	"I3MK3":   "MK3",
+	"I3MK3S":  "MK3S",
+	"I3MK25":  "MK2.5",
+	"I3MK25S": "MK2.5S",
+	"1.3.0":   "MK3",
+	"1.3.1":   "MK3S",
+	"1.2.5":   "MK2.5",
+	"1.2.6":   "MK2.5S",
+}
+
+// modelOf is the model of a printer from its /api/version answer.
+func modelOf(version versionReply) string {
+	if model, known := models[strings.TrimSpace(strings.TrimPrefix(version.Original, "PrusaLink"))]; known {
+		return model
+	}
+
+	if model, known := models[version.Printer]; known {
+		return model
+	}
+
+	return fallbackModel
 }
 
 // fallbackModel is what a printer that reports no known type code is called.
@@ -326,10 +345,7 @@ func (d *Driver) Connect(
 // endpoint options say. The unit id is the serial number, which survives a new
 // address and a new Raspberry Pi.
 func identityOf(endpoint connectorapi.Endpoint, base string, version versionReply, info infoReply) connectorapi.Identity {
-	model, known := models[version.Printer]
-	if !known {
-		model = fallbackModel
-	}
+	model := modelOf(version)
 
 	unit := endpoint.Options[optionUnitUID]
 

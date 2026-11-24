@@ -25,8 +25,9 @@ type Options struct {
 	// User and Password, when set, make the printer ask for HTTP Digest.
 	User     string
 	Password string
-	// Printer is the type code /api/version reports. Empty is 1.3.1, an MK3S.
-	Printer string
+	// Type is the printer type /api/version reports in original, as PrusaLink
+	// 0.8.1 names it. Empty is I3MK3S, an MK3S.
+	Type string
 	// Serial is the serial number /api/v1/info reports.
 	Serial string
 }
@@ -49,8 +50,8 @@ type Printer struct {
 
 // Start serves a fake printer until Close.
 func Start(opts Options) *Printer {
-	if opts.Printer == "" {
-		opts.Printer = "1.3.1"
+	if opts.Type == "" {
+		opts.Type = "I3MK3S"
 	}
 
 	p := &Printer{opts: opts, state: "IDLE", files: map[string][]byte{"examples/benchy.gcode": []byte(benchy)}}
@@ -123,9 +124,12 @@ func (p *Printer) State() string {
 }
 
 func (p *Printer) version(w http.ResponseWriter, _ *http.Request) {
+	// The fields PrusaLink 0.8.1 sends. It has no printer field, though the
+	// published API file names one.
 	writeJSON(w, map[string]any{
-		"api": "2.0.0", "server": "0.8.1", "text": "PrusaLink 0.8.1",
-		"firmware": "3.14.1-8237", "printer": p.opts.Printer, "hostname": "prusa-mk3s",
+		"api": "2.0.0", "server": "0.8.1", "original": "PrusaLink " + p.opts.Type, "text": "PrusaLink 0.8.1",
+		"firmware": "3.14.1-8237", "sdk": "0.8.1", "capabilities": map[string]any{"upload-by-put": true},
+		"hostname": "prusa-mk3s",
 	})
 }
 

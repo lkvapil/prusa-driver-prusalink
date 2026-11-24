@@ -10,9 +10,12 @@ const (
 	pathJob     = "/api/v1/job"
 )
 
-// versionReply is GET /api/version. printer is the type code of the machine,
-// such as 1.3.1 for an MK3S.
+// versionReply is GET /api/version. PrusaLink 0.8.1 names the machine in
+// original, such as "PrusaLink I3MK3S" (prusa/link/web/main.py, api_version).
+// printer is the type code the published API file names, such as 1.3.1, which
+// 0.8.1 does not send. Both are read.
 type versionReply struct {
+	Original string `json:"original"`
 	API      string `json:"api"`
 	Server   string `json:"server"`
 	Text     string `json:"text"`

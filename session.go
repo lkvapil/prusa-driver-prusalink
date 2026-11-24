@@ -152,9 +152,12 @@ func (s *Session) Do(ctx context.Context, cmd connectorapi.Command) (connectorap
 	status, err := s.client.do(ctx, method, path, nil)
 	if err != nil {
 		var answered errStatus
-		if errors.As(err, &answered) && answered.status == http.StatusConflict {
+		if errors.As(err, &answered) &&
+			(answered.status == http.StatusConflict || answered.status == http.StatusNotFound) {
 			// PrusaLink answers 409 when the print is not in a state that takes
-			// the command, such as a resume of a print that is not paused.
+			// the command, such as a resume of a print that is not paused, and
+			// 404 when the job id is no longer the current print, such as one
+			// that ended a moment ago (prusa/link/web/main.py, job_command).
 			return connectorapi.Result{OK: false, FaultCode: NotNow.Code().String(), MachineReason: err.Error()}, nil
 		}
 

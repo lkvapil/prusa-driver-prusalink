@@ -126,7 +126,7 @@ func TestAPrinterThatDoesNotAnswerIsReportedByCode(t *testing.T) {
 // TestTheIdentityComesFromThePrinter reads the model from the type code and
 // takes the serial number as the stable identity.
 func TestTheIdentityComesFromThePrinter(t *testing.T) {
-	printer := startPrinter(t, prusalinksim.Options{Serial: "CZPX1234X004XK12345", Printer: "1.2.6"})
+	printer := startPrinter(t, prusalinksim.Options{Serial: "CZPX1234X004XK12345", Type: "I3MK25S"})
 	session := connect(t, printer, nil)
 
 	identity := session.Identity()

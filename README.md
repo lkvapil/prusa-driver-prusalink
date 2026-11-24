@@ -15,6 +15,13 @@ same API on all of these printers. How the Raspberry Pi reaches the printer is
 PrusaLink's part, so the driver is the same for each of them.
 
 **Status: tested only against a fake PrusaLink, not yet on a real printer.**
+
+**A bridge until PrusaLink speaks the WebSocket protocol.** Prusa works on a
+`websockets` branch of PrusaLink that will let these printers join Prusa
+Connect the way an MK4S does, with no driver
+([prusa3d/prusa-connect#9](https://github.com/prusa3d/prusa-connect/issues/9)).
+It is not released yet. This driver works with the released PrusaLink 0.8.1.
+Once the WebSocket update ships, use that instead.
 The fake follows the published PrusaLink API, and the driver passes the sdk's
 conformance suite and a run in a real Prusa Connect server against that fake.
 A test on a real MK3S with a Raspberry Pi comes next.

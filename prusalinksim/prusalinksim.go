@@ -381,10 +381,14 @@ func baseName(path string) string {
 	return path
 }
 
-// realm and nonce are the fixed Digest challenge of the fake printer.
+// The Digest challenge of the fake printer, as PrusaLink 0.8.1 sends it through
+// PoorWSGI 2.5: realm Administrator, qop auth, the algorithm MD5-sess and an
+// opaque value (poorwsgi/results.py, poorwsgi/digest.py).
 const (
-	realm = "Printer API"
-	nonce = "1f3e5d7c9b"
+	realm     = "Administrator"
+	nonce     = "1f3e5d7c9b"
+	opaque    = "5e2b9a7c"
+	algorithm = "MD5-sess"
 )
 
 // signed refuses a request that is not signed the way the options ask for.
@@ -413,7 +417,8 @@ func (p *Printer) signed(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if p.opts.User != "" {
-			w.Header().Set("WWW-Authenticate", `Digest realm="`+realm+`", nonce="`+nonce+`", qop="auth"`)
+			w.Header().Set("WWW-Authenticate", `Digest realm="`+realm+`",qop="auth",algorithm="`+algorithm+
+				`",nonce="`+nonce+`",opaque="`+opaque+`"`)
 		}
 
 		w.WriteHeader(http.StatusUnauthorized)
@@ -437,11 +442,19 @@ func (p *Printer) digestValid(r *http.Request) bool {
 		}
 	}
 
-	ha1 := md5Hex(p.opts.User + ":" + realm + ":" + p.opts.Password)
+	// The checks PoorWSGI makes, in its order: the algorithm exactly, the
+	// opaque value, the uri, qop and realm, then the response with the -sess
+	// hash1.
+	if fields["algorithm"] != algorithm || fields["opaque"] != opaque || fields["uri"] != r.URL.RequestURI() ||
+		fields["qop"] != "auth" || fields["realm"] != realm || fields["username"] != p.opts.User {
+		return false
+	}
+
+	ha1 := md5Hex(md5Hex(p.opts.User+":"+realm+":"+p.opts.Password) + ":" + nonce + ":" + fields["cnonce"])
 	ha2 := md5Hex(r.Method + ":" + fields["uri"])
 	want := md5Hex(ha1 + ":" + nonce + ":" + fields["nc"] + ":" + fields["cnonce"] + ":auth:" + ha2)
 
-	return fields["username"] == p.opts.User && fields["response"] == want && fields["uri"] == r.URL.RequestURI()
+	return fields["response"] == want
 }
 
 func md5Hex(s string) string {

@@ -3,19 +3,28 @@ package prusalink
 import (
 	"crypto/md5" //nolint:gosec // HTTP Digest in RFC 7616 with MD5 is what PrusaLink asks for. It is not used to protect anything here.
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"strings"
 )
 
 // challenge is what a WWW-Authenticate header with the Digest scheme asks for.
 // PrusaLink on a Raspberry Pi signs in a user this way. The default user name
 // is "maker", and the password is on the printer's screen.
+//
+// PrusaLink 0.8.1 serves through PoorWSGI 2.5, which asks for the algorithm
+// MD5-sess with qop auth and an opaque value, and refuses an answer whose
+// algorithm is not exactly the one it asked for (poorwsgi/digest.py,
+// check_credentials). Its nonce lasts 60 seconds, and an expired one is
+// answered with a new challenge marked stale.
 type challenge struct {
-	realm  string
-	nonce  string
-	opaque string
-	qop    bool
+	realm     string
+	nonce     string
+	opaque    string
+	algorithm string
+	qop       bool
 }
 
 // parseChallenge reads a WWW-Authenticate header. ok is false for a header that
@@ -45,6 +54,8 @@ func parseChallenge(header string) (challenge, bool) {
 			c.nonce = value
 		case "opaque":
 			c.opaque = value
+		case "algorithm":
+			c.algorithm = value
 		case "qop":
 			for _, offered := range strings.Split(value, ",") {
 				if strings.TrimSpace(offered) == "auth" {
@@ -54,7 +65,26 @@ func parseChallenge(header string) (challenge, bool) {
 		}
 	}
 
-	return c, hasRealm && c.nonce != ""
+	if c.algorithm == "" {
+		c.algorithm = "MD5"
+	}
+
+	_, supported := hashOf(c.algorithm)
+
+	return c, hasRealm && c.nonce != "" && supported
+}
+
+// hashOf is the hash an algorithm names, and false for one this driver does
+// not speak. A -sess algorithm uses the same hash.
+func hashOf(algorithm string) (func() hash.Hash, bool) {
+	switch strings.ToUpper(strings.TrimSuffix(strings.ToLower(algorithm), "-sess")) {
+	case "MD5":
+		return md5.New, true
+	case "SHA-256":
+		return sha256.New, true
+	default:
+		return nil, false
+	}
 }
 
 // splitParams splits the parameters of a challenge at the commas that are not
@@ -87,13 +117,20 @@ func (c challenge) authorization(method, uri, user, password string, count uint3
 		cnonce = randomHex()
 	}
 
-	ha1 := md5Hex(user + ":" + c.realm + ":" + password)
-	ha2 := md5Hex(method + ":" + uri)
+	newHash, _ := hashOf(c.algorithm)
+	sum := func(text string) string { return hexOf(newHash, text) }
+
+	ha1 := sum(user + ":" + c.realm + ":" + password)
+	if strings.HasSuffix(strings.ToLower(c.algorithm), "-sess") {
+		ha1 = sum(ha1 + ":" + c.nonce + ":" + cnonce)
+	}
+
+	ha2 := sum(method + ":" + uri)
 	nc := fmt.Sprintf("%08x", count)
 
-	response := md5Hex(ha1 + ":" + c.nonce + ":" + ha2)
+	response := sum(ha1 + ":" + c.nonce + ":" + ha2)
 	if c.qop {
-		response = md5Hex(ha1 + ":" + c.nonce + ":" + nc + ":" + cnonce + ":auth:" + ha2)
+		response = sum(ha1 + ":" + c.nonce + ":" + nc + ":" + cnonce + ":auth:" + ha2)
 	}
 
 	parts := []string{
@@ -102,7 +139,7 @@ func (c challenge) authorization(method, uri, user, password string, count uint3
 		`nonce="` + c.nonce + `"`,
 		`uri="` + uri + `"`,
 		`response="` + response + `"`,
-		"algorithm=MD5",
+		"algorithm=" + c.algorithm,
 	}
 
 	if c.opaque != "" {
@@ -116,10 +153,11 @@ func (c challenge) authorization(method, uri, user, password string, count uint3
 	return "Digest " + strings.Join(parts, ", ")
 }
 
-func md5Hex(s string) string {
-	sum := md5.Sum([]byte(s)) //nolint:gosec // see the import.
+func hexOf(newHash func() hash.Hash, text string) string {
+	h := newHash()
+	_, _ = h.Write([]byte(text))
 
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // randomHex is a client nonce. A failure of the system's random source leaves

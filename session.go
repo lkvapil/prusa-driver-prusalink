@@ -31,6 +31,11 @@ type Session struct {
 	silence time.Duration
 
 	reader reader
+
+	// storages is what the printer last said about its storages.
+	storages storages
+	// sending is true while a transfer runs. PrusaLink takes one at a time.
+	sending atomic.Bool
 	// job is the print the last status named, read by Do to address a pause,
 	// a resume or a stop. Zero when nothing prints.
 	job atomic.Int64
@@ -117,6 +122,19 @@ func (s *Session) Do(ctx context.Context, cmd connectorapi.Command) (connectorap
 		}
 
 		return connectorapi.Result{OK: true}, nil
+	}
+
+	switch cmd.Verb {
+	case VerbStartPrint:
+		return s.startPrint(ctx, cmd.Args[startPrintArgument])
+	case connectorapi.VerbSendInfo, connectorapi.VerbSendFileInfo, connectorapi.VerbFileUpload:
+		// The host reaches these through Storages, List and Send. Asked as a
+		// command, each reads nothing and moves nothing.
+		return connectorapi.Result{OK: true}, nil
+	case connectorapi.VerbDeleteFile, connectorapi.VerbDeleteFolder:
+		return connectorapi.Result{}, connectorapi.CapabilityNotSupported.
+			New("a file is deleted through the file interface, not as a command").
+			With(fault.StringParam("verb", cmd.Verb.String()))
 	}
 
 	job := s.job.Load()

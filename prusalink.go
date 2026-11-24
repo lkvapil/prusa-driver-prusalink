@@ -17,9 +17,11 @@
 //	password  that user's password, shown in the printer's menu
 //	unit_uid  the stable identity. Empty uses the serial number the printer reports
 //
-// What this driver does in version 0.1: telemetry, the print on the bed, and
-// pause, resume and stop. PrusaLink's API has no request to set a temperature,
-// so this driver offers none.
+// What this driver does in version 0.1: telemetry, the print on the bed,
+// pause, resume and stop, the storages and their files, sending a file, printing
+// a file the printer holds, and deleting a file or a folder. PrusaLink's API has
+// no request to set a temperature or to make an empty folder, so this driver
+// offers neither.
 package prusalink
 
 import (
@@ -246,8 +248,21 @@ func (d *Driver) Baseline() connectorapi.Set {
 		VerbPausePrint:    {Flag: true},
 		VerbResumePrint:   {Flag: true},
 		VerbStopPrint:     {Flag: true},
+		VerbStartPrint:    {Flag: true},
+		ArgStartPrintPath: {
+			Flag: true, Kind: connectorapi.KindString, Required: true, Limit: argPathLimit, HasLimit: true,
+		},
+		connectorapi.VerbSendInfo:     {Flag: true},
+		connectorapi.VerbSendFileInfo: {Flag: true},
+		connectorapi.VerbFileUpload:   {Flag: true},
+		connectorapi.VerbDeleteFile:   {Flag: true},
+		connectorapi.VerbDeleteFolder: {Flag: true},
 	}
 }
+
+// startPrintArgument is the argument name of VerbStartPrint.
+const startPrintArgument = "path"
+
 
 // Connect reads what the printer is and its first status, and returns a
 // session that reads the status from then on. profile is what the host offers,
@@ -295,6 +310,10 @@ func (d *Driver) Connect(
 	var status statusReply
 	if _, err = c.get(ctx, pathStatus, &status); err != nil {
 		return nil, unreachable(base, "the printer did not answer "+pathStatus).Wrap(err)
+	}
+
+	if list, listErr := readStorages(ctx, c); listErr == nil {
+		s.storages.set(list)
 	}
 
 	s.first = append(appendNumber(nil, nozzleDiamPath, info.NozzleDiameter), s.patchesFrom(ctx, status)...)

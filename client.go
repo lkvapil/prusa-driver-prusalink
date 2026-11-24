@@ -115,10 +115,56 @@ func (c *client) do(ctx context.Context, method, path string, out any) (int, err
 	return resp.StatusCode, nil
 }
 
+// request sends one request with optional headers and body and discards the
+// answer. length is the body's length, or -1 for no body. timeout bounds the
+// request; zero leaves it to ctx, which is what an upload needs.
+//
+// A request with a body is not sent twice: the body is read once. A Digest
+// printer has to have challenged this client before, which Send makes sure of.
+func (c *client) request(
+	ctx context.Context, method, path string, headers http.Header, body io.Reader, length int64, timeout time.Duration,
+) (int, error) {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	var resp *http.Response
+
+	var err error
+
+	if body == nil {
+		resp, err = c.sendWith(ctx, method, path, headers)
+	} else {
+		resp, err = c.attemptWith(ctx, method, path, headers, body, length)
+	}
+
+	if err != nil {
+		return 0, err
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxReplyBytes))
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		return resp.StatusCode, errStatus{method: method, path: path, status: resp.StatusCode}
+	}
+
+	return resp.StatusCode, nil
+}
+
 // send makes the request, and answers a Digest challenge once when the printer
 // asks for one.
 func (c *client) send(ctx context.Context, method, path string) (*http.Response, error) {
-	resp, err := c.attempt(ctx, method, path)
+	return c.sendWith(ctx, method, path, nil)
+}
+
+// sendWith is send with extra headers.
+func (c *client) sendWith(ctx context.Context, method, path string, headers http.Header) (*http.Response, error) {
+	resp, err := c.attemptWith(ctx, method, path, headers, nil, -1)
 	if err != nil {
 		return nil, err
 	}
@@ -140,14 +186,26 @@ func (c *client) send(ctx context.Context, method, path string) (*http.Response,
 	c.challenge, c.count = &offered, 0
 	c.mu.Unlock()
 
-	return c.attempt(ctx, method, path)
+	return c.attemptWith(ctx, method, path, headers, nil, -1)
 }
 
-// attempt makes the request once, signed with what this client knows now.
-func (c *client) attempt(ctx context.Context, method, path string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
+// attemptWith makes the request once, signed with what this client knows now.
+func (c *client) attemptWith(
+	ctx context.Context, method, path string, headers http.Header, body io.Reader, length int64,
+) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
 	if err != nil {
 		return nil, fmt.Errorf("build %s %s: %w", method, path, err)
+	}
+
+	if length >= 0 && body != nil {
+		req.ContentLength = length
+	}
+
+	for key, values := range headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
 	}
 
 	req.Header.Set("Accept", "application/json")

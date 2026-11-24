@@ -10,6 +10,7 @@ import (
 	"crypto/md5" //nolint:gosec // HTTP Digest in RFC 7616 with MD5, as PrusaLink asks for it.
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -42,6 +43,8 @@ type Printer struct {
 	progress float64
 	// Requests counts every request that reached a handler, signed or not.
 	requests int
+	// files is the local storage of the Raspberry Pi: path inside it to bytes.
+	files map[string][]byte
 }
 
 // Start serves a fake printer until Close.
@@ -50,7 +53,7 @@ func Start(opts Options) *Printer {
 		opts.Printer = "1.3.1"
 	}
 
-	p := &Printer{opts: opts, state: "IDLE"}
+	p := &Printer{opts: opts, state: "IDLE", files: map[string][]byte{"examples/benchy.gcode": []byte(benchy)}}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/version", p.signed(p.version))
@@ -60,6 +63,11 @@ func Start(opts Options) *Printer {
 	mux.HandleFunc("PUT /api/v1/job/{id}/pause", p.signed(p.command("PRINTING", "PAUSED")))
 	mux.HandleFunc("PUT /api/v1/job/{id}/resume", p.signed(p.command("PAUSED", "PRINTING")))
 	mux.HandleFunc("DELETE /api/v1/job/{id}", p.signed(p.stop))
+	mux.HandleFunc("GET /api/v1/storage", p.signed(p.storage))
+	mux.HandleFunc("GET /api/v1/files/local/{path...}", p.signed(p.listFiles))
+	mux.HandleFunc("PUT /api/v1/files/local/{path...}", p.signed(p.upload))
+	mux.HandleFunc("POST /api/v1/files/local/{path...}", p.signed(p.printFile))
+	mux.HandleFunc("DELETE /api/v1/files/local/{path...}", p.signed(p.deleteFile))
 
 	p.server = httptest.NewServer(mux)
 
@@ -197,6 +205,161 @@ func (p *Printer) stop(w http.ResponseWriter, r *http.Request) {
 
 	p.state = "STOPPED"
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// benchy is the one print file the fake printer holds from the start. Its
+// header carries what a slicer writes, so a listing of it reads metadata.
+const benchy = "; estimated printing time (normal mode) = 1h 12m\nG28\n"
+
+// File returns the bytes stored at a path of the local storage, and false when
+// there is none.
+func (p *Printer) File(path string) ([]byte, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	data, ok := p.files[path]
+
+	return data, ok
+}
+
+func (p *Printer) storage(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, map[string]any{"storage_list": []map[string]any{
+		{"name": "PrusaLink gcodes", "type": "LOCAL", "path": "/local", "free_space": 7_000_000_000, "available": true, "read_only": false},
+		{"name": "SD Card", "type": "SDCARD", "path": "/sdcard", "available": false, "read_only": true},
+	}})
+}
+
+// listFiles answers one file with its metadata, or one folder with its
+// children, the way PrusaLink does.
+func (p *Printer) listFiles(w http.ResponseWriter, r *http.Request) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	path := strings.Trim(r.PathValue("path"), "/")
+
+	if data, ok := p.files[path]; ok {
+		writeJSON(w, map[string]any{
+			"name": baseName(path), "display_name": baseName(path), "type": "PRINT_FILE", "size": len(data),
+			"m_timestamp": 1764000000, "read_only": false,
+			"meta": map[string]any{"estimated_print_time": 4320, "layer_height": 0.2, "filament_type": "PETG", "printer_model": "MK3S"},
+		})
+
+		return
+	}
+
+	children := []map[string]any{}
+	folders := map[string]bool{}
+
+	for name, data := range p.files {
+		rest, inside := strings.CutPrefix(name, path+"/")
+		if path == "" {
+			rest, inside = name, true
+		}
+
+		if !inside {
+			continue
+		}
+
+		if head, _, nested := strings.Cut(rest, "/"); nested {
+			if !folders[head] {
+				folders[head] = true
+				children = append(children, map[string]any{"name": head, "display_name": head, "type": "FOLDER"})
+			}
+
+			continue
+		}
+
+		children = append(children, map[string]any{
+			"name": rest, "display_name": rest, "type": "PRINT_FILE", "size": len(data), "m_timestamp": 1764000000,
+		})
+	}
+
+	if path != "" && len(children) == 0 {
+		w.WriteHeader(http.StatusNotFound)
+
+		return
+	}
+
+	writeJSON(w, map[string]any{"name": baseName(path), "type": "FOLDER", "children": children})
+}
+
+// upload stores the body, and refuses a name that is taken, as PrusaLink does
+// without the Overwrite header.
+func (p *Printer) upload(w http.ResponseWriter, r *http.Request) {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	path := strings.Trim(r.PathValue("path"), "/")
+	if _, taken := p.files[path]; taken && r.Header.Get("Overwrite") != "?1" {
+		w.WriteHeader(http.StatusConflict)
+
+		return
+	}
+
+	p.files[path] = data
+	w.WriteHeader(http.StatusCreated)
+}
+
+// printFile starts a print of a stored file, and refuses while one runs.
+func (p *Printer) printFile(w http.ResponseWriter, r *http.Request) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	path := strings.Trim(r.PathValue("path"), "/")
+	if _, ok := p.files[path]; !ok {
+		w.WriteHeader(http.StatusNotFound)
+
+		return
+	}
+
+	if p.state == "PRINTING" || p.state == "PAUSED" {
+		w.WriteHeader(http.StatusConflict)
+
+		return
+	}
+
+	p.job++
+	p.state, p.file, p.progress = "PRINTING", baseName(path), 0
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteFile removes a file, or a folder and what is in it.
+func (p *Printer) deleteFile(w http.ResponseWriter, r *http.Request) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	path := strings.Trim(r.PathValue("path"), "/")
+	removed := false
+
+	for name := range p.files {
+		if name == path || strings.HasPrefix(name, path+"/") {
+			delete(p.files, name)
+			removed = true
+		}
+	}
+
+	if !removed {
+		w.WriteHeader(http.StatusNotFound)
+
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func baseName(path string) string {
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		return path[i+1:]
+	}
+
+	return path
 }
 
 // realm and nonce are the fixed Digest challenge of the fake printer.

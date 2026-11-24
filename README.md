@@ -1,94 +1,122 @@
 # prusalink
 
-A printer driver for prusalink machines, built against the
-prusa-connect sdk. `scaffold-driver` wrote this skeleton.
+A printer driver for [Prusa Connect](https://github.com/prusa3d/prusa-connect)
+that brings the Original Prusa MK3S, MK3S+, MK3 and MK2.5S into the server.
 
-An operator selects it by writing `type: prusalink` under a connector. Where
-another module has registered the same bare name, they write the qualified
-form instead:
+These printers have the RAMBo board. The board cannot speak to Prusa Connect, so
+a Raspberry Pi Zero 2 W on the printer's GPIO header runs
+[PrusaLink](https://github.com/prusa3d/Prusa-Link), which drives the printer
+over its serial line and serves an HTTP API. This driver reads that API. The
+server then shows the MK3S beside an MK4S, at the same state paths.
 
-```
-com.github.aux.lkvapil.prusa-driver-prusalink/prusalink
-```
+## What it does
 
-| file | what it is |
+| | |
 | --- | --- |
-| `prusalink.go` | the dialect: the identity exchange, the capability ceiling, the command and the state stream |
-| `faults.go` | every code this driver fails with, each documented once |
-| `prusalink_test.go` | the published conformance suite, the registration, and the settings |
-| `build.yaml` | the build configuration that puts this driver into a server binary |
-| `CHANGELOG.md` | what an operator sees change when they upgrade this driver |
+| state | `/state` with PrusaLink's words: IDLE, READY, BUSY, PRINTING, PAUSED, FINISHED, STOPPED, ERROR, ATTENTION |
+| readings | nozzle and bed temperature and target, X, Y and Z, speed, flow, print fan and hotend fan, nozzle diameter |
+| print | `/job/id`, `/job/name`, progress, time printing, time remaining, and the outcome when it ends |
+| commands | pause, resume and stop the print, and start a print of a file on the printer |
+| files | the storages, a folder listing, what the slicer wrote about a file, sending a file, deleting a file or a folder |
+| sign-in | an API key, or the PrusaLink user and password over HTTP Digest |
 
-## Installation
+PrusaLink's API has no request to set a temperature or to make an empty
+folder, so the driver offers neither.
 
-There is no install step of its own. A driver is compiled into a server binary,
-and `build.yaml` is what names it. Run this from a prusa-connect checkout:
+The paths are the ones the xBuddy dialect writes for an MK4S:
+`/tools/0/nozzle_temp`, `/temperature/bed`, `/axis/z` and so on. A client reads
+both printers the same way.
+
+## Build a server with it
+
+A driver is compiled into the server. `build.yaml` names this module. Run this
+from a prusa-connect checkout beside this directory:
 
 ```bash
 make compose-build BUILD_FILE=../prusa-connect-prusalink/build.yaml
 ```
 
-Paste what the command printed on your machine under this paragraph, and the
-first lines the built binary prints when it starts. A README that quotes real
-output is one a reader can check; one that describes the output is one they have
-to trust.
+`build-minimal.yaml` builds the same server without the web app, which is
+quicker when you only want to check the driver:
 
-Run the tests from this directory:
-
-```bash
-go test ./...
+```text
+$ make compose-build BUILD_FILE=../prusa-connect-prusalink/build-minimal.yaml
+Building with tags: minimal
+Wrote .../prusa-connect/bin/server-prusalink-minimal
 ```
 
 ## Configuration
 
-An operator writes one connector per printer. The address is not a key here:
-the server keeps its own list of what to dial and hands this driver one endpoint
-per address, so a printer is added without a restart and without an edit to the
-configuration file.
+Name the connector in the server's configuration file:
 
 ```yaml
-resources:
-  driver:
-    prusalink-1:
+core:
+  connectors:
+    prusalink:
       type: prusalink
       config:
-        timeout: 10s
+        poll_interval: 2s
 ```
 
 | key | type | default | what it controls |
 | --- | --- | --- | --- |
 | `timeout` | duration | `10s` | How long one request to the printer may take before it is abandoned. |
+| `poll_interval` | duration | `2s` | How often the printer's status is read. |
 
-The table is the same list `doc()` declares in `prusalink.go`, and
-`TestTheDeclaredDefaultIsTheOneTheCodeUses` holds the two together. Nothing here
-reads an environment variable, so this table is the whole of what an operator
-can set.
+Then tell the server which printer to dial. The address is not in the file: the
+server keeps its own list, so a printer is added without a restart.
 
-## Permissions
+```bash
+curl -X PUT http://127.0.0.1:8080/api/v1/connector-endpoints/mk3s \
+  -H "If-None-Match: *" -H "Content-Type: application/json" \
+  -d '{"connector": "prusalink", "address": "192.168.1.60", "enabled": true,
+       "options": {"username": "maker", "password": "the password from the printer menu"}}'
+```
 
-A driver takes no permission of its own. It acts for the server, which decides
-who may send a command before it reaches this code, and it holds no grant. What
-a driver may do to a printer is its capability set instead: `Baseline` in
-`prusalink.go` is the ceiling, the host's profile subtracts from it, and what
-the printer reports subtracts again. A driver that adds a capability back fails
-the conformance suite.
-
-## Failures
-
-`faults.go` holds every code this driver fails with. A failure that reaches a
-person or a client is a registered code in this driver's own domain,
-`com.github.aux.lkvapil.prusa-driver-prusalink`, with its documentation beside it and the English sentence
-kept. A caller branches on the code with `fault.HasCode`, so a reworded sentence
-never breaks a caller and a new code always does.
-
-Add a code there and nowhere else.
-
-## Troubleshooting
-
-| what you see | what it means |
+| endpoint option | what it is |
 | --- | --- |
-| `com.github.aux.lkvapil.prusa-driver-prusalink/DEVICE_UNREACHABLE` | the printer did not answer. The `address` parameter names what was dialled |
-| `com.github.aux.lkvapil.prusa-driver-prusalink/INVALID_CONFIG` | the connector's `config` block cannot be read. The `key` parameter names the line |
-| a command is refused before it is sent | the printer does not have that capability. Compare `Baseline` with what the printer reported |
-| the printer goes away and comes back | the state stream ended. This dialect has no renegotiation, so the server reconnects as a new session |
-| nothing registers the driver | the server binary was not built from `build.yaml`. A binary built from a configuration that does not name this module has never heard of it |
+| `api_key` | an API key set in PrusaLink, sent as `X-Api-Key` |
+| `username`, `password` | the PrusaLink user for HTTP Digest. The default user is `maker`, and the printer shows the password in its menu |
+| `unit_uid` | the stable identity. Empty uses the serial number the printer reports |
+
+What the server printed when it dialled the fake printer below:
+
+```text
+level=INFO msg="connector dials the endpoints named for it" connector=prusalink type=com.github.aux.lkvapil.prusa-driver-prusalink/prusalink
+level=INFO msg="a printer was admitted" model=MK3S serial=CZPX0000X004XK00000 unit_uid=prusalink:CZPX0000X004XK00000 capabilities=4 epoch=1
+level=INFO msg="a dialled printer arrived" endpoint=mk3s-test connector=prusalink model=MK3S
+```
+
+Where another module has registered the same bare name, write the qualified
+type instead: `com.github.aux.lkvapil.prusa-driver-prusalink/prusalink`.
+
+## Try it without a printer
+
+`cmd/prusalinksim` runs a fake PrusaLink with the fields of the published
+OpenAPI file:
+
+```bash
+go run ./cmd/prusalinksim -user maker -password s3cret -print-after 20s
+```
+
+It prints its address. Add it as an endpoint as shown above.
+
+## Tests
+
+```bash
+go test -race ./...
+```
+
+`TestContract` runs the published conformance suite of the sdk against the fake
+printer, including the file half. The other tests follow one print from start
+to stop, sign in over Digest, send a file and check its length on the printer,
+and end a session when the printer stops answering.
+
+What has not been checked yet: a real MK3S with a Raspberry Pi. The fake
+printer follows the published API, and a real PrusaLink may differ in a field
+the API file does not describe.
+
+## Status
+
+Version 0.1.0, experimental. It is built against the sdk directory of a
+prusa-connect checkout, because the sdk module has no published version yet.

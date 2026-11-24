@@ -228,11 +228,11 @@ func duration(key, written string, fallback time.Duration) (time.Duration, error
 
 	parsed, err := time.ParseDuration(written)
 	if err != nil {
-		return 0, InvalidConfig.New(key+" is not a duration").With(fault.StringParam("key", key)).Wrap(err)
+		return 0, InvalidConfig.New(key + " is not a duration").With(fault.StringParam("key", key)).Wrap(err)
 	}
 
 	if parsed <= 0 {
-		return 0, InvalidConfig.New(key+" must be positive, and it is "+parsed.String()).
+		return 0, InvalidConfig.New(key + " must be positive, and it is " + parsed.String()).
 			With(fault.StringParam("key", key))
 	}
 
@@ -281,7 +281,6 @@ func (d *Driver) Baseline() connectorapi.Set {
 
 // startPrintArgument is the argument name of VerbStartPrint.
 const startPrintArgument = "path"
-
 
 // Connect reads what the printer is and its first status, and returns a
 // session that reads the status from then on. profile is what the host offers,

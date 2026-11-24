@@ -12,27 +12,27 @@ import (
 // the xBuddy dialect writes for an MK4S, so a client reads an MK3S and an MK4S
 // at the same addresses.
 const (
-	statePath         = "/state"
-	nozzlePath        = "/tools/0/nozzle_temp"
-	nozzleTargetPath  = "/tools/0/nozzle_target_temp"
-	nozzleDiamPath    = "/tools/0/features/nozzle_diameter"
-	printFanPath      = "/tools/0/print_fan_rpm"
-	heatbreakFanPath  = "/tools/0/heatbreak_fan_rpm"
-	bedPath           = "/temperature/bed"
-	bedTargetPath     = "/temperature/bed_target"
-	speedPath         = "/speed"
-	flowPath          = "/flow"
-	axisXPath         = "/axis/x"
-	axisYPath         = "/axis/y"
-	axisZPath         = "/axis/z"
-	jobNamePath       = "/job/name"
-	jobIDPath         = connectorapi.JobIDPath
-	jobProgressPath   = connectorapi.JobProgressPath
-	jobPrintingPath   = connectorapi.JobTimePrintingPath
-	jobRemainingPath  = connectorapi.JobTimeRemainingPath
-	jobOutcomePath    = connectorapi.JobOutcomePath
-	decimalsKept      = 100
-	unknownStateWord  = "UNKNOWN"
+	statePath        = "/state"
+	nozzlePath       = "/tools/0/nozzle_temp"
+	nozzleTargetPath = "/tools/0/nozzle_target_temp"
+	nozzleDiamPath   = "/tools/0/features/nozzle_diameter"
+	printFanPath     = "/tools/0/print_fan_rpm"
+	heatbreakFanPath = "/tools/0/heatbreak_fan_rpm"
+	bedPath          = "/temperature/bed"
+	bedTargetPath    = "/temperature/bed_target"
+	speedPath        = "/speed"
+	flowPath         = "/flow"
+	axisXPath        = "/axis/x"
+	axisYPath        = "/axis/y"
+	axisZPath        = "/axis/z"
+	jobNamePath      = "/job/name"
+	jobIDPath        = connectorapi.JobIDPath
+	jobProgressPath  = connectorapi.JobProgressPath
+	jobPrintingPath  = connectorapi.JobTimePrintingPath
+	jobRemainingPath = connectorapi.JobTimeRemainingPath
+	jobOutcomePath   = connectorapi.JobOutcomePath
+	decimalsKept     = 100
+	unknownStateWord = "UNKNOWN"
 )
 
 // outcomes maps the state a print ends in onto the closed set the host

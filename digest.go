@@ -1,7 +1,7 @@
 package prusalink
 
 import (
-	"crypto/md5" //nolint:gosec // HTTP Digest in RFC 7616 with MD5 is what PrusaLink asks for. It is not used to protect anything here.
+	"crypto/md5" //nolint:gosec // HTTP Digest in RFC 7616 with MD5 is what PrusaLink asks for. It protects nothing here.
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"

@@ -17,8 +17,8 @@ PrusaLink's part, so the driver is the same for each of them.
 **Status: tested only against a fake PrusaLink, not yet on a real printer.**
 
 **A bridge until PrusaLink speaks the WebSocket protocol.** Prusa works on a
-`websockets` branch of PrusaLink that will let these printers join Prusa
-Connect the way an MK4S does, with no driver
+`websockets` branch of PrusaLink. It will let these printers join Prusa Connect
+the way an MK4S does, with no driver
 ([prusa3d/prusa-connect#9](https://github.com/prusa3d/prusa-connect/issues/9)).
 It is not released yet. This driver works with the released PrusaLink 0.8.1.
 Once the WebSocket update ships, use that instead.
@@ -132,8 +132,8 @@ go test -race ./...
 
 `TestContract` runs the published conformance suite of the sdk against the fake
 printer, including the file half. The other tests follow one print from start
-to stop, sign in over Digest, send a file and check its length on the printer,
-and end a session when the printer stops answering.
+to stop and sign in over Digest. They send a file and check its length on the
+printer, and they end a session when the printer stops answering.
 
 What has not been checked yet: a real MK3S with a Raspberry Pi. The fake
 printer follows the published API, and a real PrusaLink may differ in a field
